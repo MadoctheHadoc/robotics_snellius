@@ -17,7 +17,9 @@ module load CUDA/12.1.1
 source venv/bin/activate
 
 pip install --upgrade pip
-pip install -r reqs.txt
+# torch being funny and needing special treatment
+pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install -r reqs.txt --extra-index-url https://download.pytorch.org/whl/cu121
 
 python vbti/utils/train/train_smolvla_custom.py
 deactivate
