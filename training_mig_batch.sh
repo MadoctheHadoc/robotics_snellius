@@ -25,11 +25,12 @@ pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu12
 grep -vE "isaaclab|isaacsim" reqs.txt > reqs_filtered.txt
 pip install -r reqs_filtered.txt --extra-index-url https://download.pytorch.org/whl/cu121
 
-# Install isaacsim from NVIDIA's index
-pip install isaacsim==5.1.0.0 --extra-index-url https://pypi.nvidia.com/
+# isaacsim: pypi.nvidia.com unreachable from Snellius - skip for now
+# pip install isaacsim==5.1.0.0 --extra-index-url https://pypi.nvidia.com/ || true
 
-# Install isaaclab from source
-pip install git+https://github.com/isaac-sim/IsaacLab.git@v2.3.2.post1
+# isaaclab from source - try without the 'v' prefix tag, or latest
+pip install git+https://github.com/isaac-sim/IsaacLab.git@2.3.2.post1 || \
+pip install git+https://github.com/isaac-sim/IsaacLab.git || true
 
 python vbti/utils/train/train_smolvla_custom.py
 deactivate
