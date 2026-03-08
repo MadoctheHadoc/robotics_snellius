@@ -18,19 +18,18 @@ source venv/bin/activate
 
 pip install --upgrade pip
 
-# Install torch first (needs special index)
+# CRLF->LF conversion
+sed -i 's/\r//' reqs.txt
+
+# torch (needs special index)
 pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
 
-# Install everything from reqs except isaaclab and isaacsim (handled separately)
+# lerobot (not on PyPI)
+pip install git+https://github.com/huggingface/lerobot.git
+
+# remaining reqs (skip isaaclab/isaacsim)
 grep -vE "isaaclab|isaacsim" reqs.txt > reqs_filtered.txt
 pip install -r reqs_filtered.txt --extra-index-url https://download.pytorch.org/whl/cu121
-
-# isaacsim: pypi.nvidia.com unreachable from Snellius - skip for now
-# pip install isaacsim==5.1.0.0 --extra-index-url https://pypi.nvidia.com/ || true
-
-# isaaclab from source - try without the 'v' prefix tag, or latest
-pip install git+https://github.com/isaac-sim/IsaacLab.git@2.3.2.post1 || \
-pip install git+https://github.com/isaac-sim/IsaacLab.git || true
 
 python vbti/utils/train/train_smolvla_custom.py
 deactivate
