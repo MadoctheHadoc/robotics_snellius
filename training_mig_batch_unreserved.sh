@@ -22,6 +22,7 @@ pip install --upgrade pip
 pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
 pip install tqdm
 pip install lerobot
+pip install --upgrade huggingface_hub
 pip install -e .
 
 python vbti/utils/train/train_smolvla_custom.py
