@@ -8,6 +8,8 @@
 #SBATCH --time=10:00:00
 #SBATCH --partition=gpu_mig
 
+cd $SLURM_SUBMIT_DIR
+
 module load 2023
 module load foss/2023a
 module load Python/3.11.3-GCCcore-12.3.0

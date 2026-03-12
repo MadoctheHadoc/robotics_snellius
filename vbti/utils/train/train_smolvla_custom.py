@@ -17,7 +17,7 @@ from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
 from lerobot.datasets.utils import dataset_to_policy_features
 from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
-from lerobot.policies.factory import make_pre_post_processors
+from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
 from vbti.utils.datasets import load_and_split_dataset, create_dataloaders
 
@@ -170,14 +170,11 @@ def main():
     print(f"Trainable parameters: {trainable_params:,} ({100*trainable_params/total_params:.1f}%)")
 
     # Create preprocessor/postprocessor
-    preprocessor, postprocessor = make_pre_post_processors(cfg, dataset_stats=dataset_metadata.stats)
+    preprocessor, postprocessor = make_smolvla_pre_post_processors(cfg, dataset_stats=dataset_metadata.stats)
 
     # ============== OPTIMIZER & DATALOADER ==============
     optimizer_config = cfg.get_optimizer_preset()
     optimizer = optimizer_config.build(policy.parameters())
-
-    scheduler_config = cfg.get_scheduler_preset()
-    scheduler = scheduler_config.build(optimizer, training_steps)
 
     if val_dataset is not None:
         train_loader, val_loader = create_dataloaders(train_dataset, val_dataset, batch_size=batch_size, num_workers=0)
@@ -216,7 +213,6 @@ def main():
             )
 
             optimizer.step()
-            scheduler.step()
 
             losses.append(loss.item())
             step += 1
@@ -224,8 +220,7 @@ def main():
             # Logging
             if step % log_freq == 0:
                 avg_loss = sum(losses[-log_freq:]) / min(len(losses), log_freq)
-                lr = scheduler.get_last_lr()[0]
-                print(f"Step {step:5d} | Train Loss: {avg_loss:.4f} | LR: {lr:.2e}")
+                print(f"Step {step:5d} | Train Loss: {avg_loss:.4f}")
 
             # Validation (only if we have a validation set)
             if val_loader is not None and step % val_freq == 0:
