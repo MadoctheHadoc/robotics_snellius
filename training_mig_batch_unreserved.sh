@@ -19,9 +19,10 @@ source venv/bin/activate
 
 pip install --upgrade pip
 
-pip install tqdm
-pip install --upgrade lerobot
 pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install tqdm
+pip install lerobot
+pip install "huggingface_hub==1.6.0"
 pip install -e .
 
 python vbti/utils/train/train_smolvla_custom.py

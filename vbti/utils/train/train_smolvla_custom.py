@@ -58,6 +58,9 @@ def validate(policy, val_loader, preprocessor, device, val_size):
 def main():
     # ============== CONFIG ==============
     dataset_repo_id = "eternalmay33/lift_cube_3cams"
+    # Local path to the dataset root directory (parent of eternalmay33/lift_cube_3cams/).
+    # Set to None to use the default HuggingFace cache (~/.cache/huggingface/lerobot).
+    data_dir = Path("/gpfs/home2/lpopdimitrova/madoc/robotics_snellius/data")
     output_directory = Path("outputs/train/smolvla_lift_cube_3cams_v2")
     output_directory.mkdir(parents=True, exist_ok=True)
 
@@ -88,7 +91,7 @@ def main():
 
     # ============== LOAD DATASET METADATA ==============
     print("\nLoading dataset metadata...")
-    dataset_metadata = LeRobotDatasetMetadata(dataset_repo_id)
+    dataset_metadata = LeRobotDatasetMetadata(dataset_repo_id, root=data_dir)
 
     print(f"Total episodes: {dataset_metadata.total_episodes}")
     print(f"Total frames: {dataset_metadata.total_frames}")
@@ -149,6 +152,7 @@ def main():
 
     full_dataset, train_dataset, val_dataset = load_and_split_dataset(
         repo_id=dataset_repo_id,
+        root=data_dir,
         delta_timestamps=delta_timestamps,
         train_ratio=1.0,
         verbose=True,
