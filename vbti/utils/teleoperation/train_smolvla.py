@@ -1,9 +1,12 @@
 """
-Minimal SmolVLA finetuning on locally saved SO-101 episodes.
+Minimal SmolVLA finetuning on the lidia552/Embodia_project HuggingFace dataset.
+
+The dataset is gated — put your token in .env:
+    HF_TOKEN=hf_...
 
 Run from repo root:
     python vbti/utils/teleoperation/train_smolvla.py
-    python vbti/utils/teleoperation/train_smolvla.py --episodes_dir saved_episodes --output_dir outputs/smolvla
+    python vbti/utils/teleoperation/train_smolvla.py --output_dir outputs/smolvla --total_steps 2000
 """
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -13,6 +16,8 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import ConcatDataset, DataLoader
+from dotenv import load_dotenv
+from huggingface_hub import login, snapshot_download
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
 from lerobot.datasets.utils import dataset_to_policy_features
@@ -21,6 +26,7 @@ from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
+REPO_ID = "lidia552/Embodia_project"
 CHUNK_SIZE = 50
 LEARNING_RATE = 1e-5
 BATCH_SIZE = 4
@@ -29,8 +35,8 @@ LOG_FREQ = 10
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Finetune SmolVLA on saved SO-101 episodes")
-    parser.add_argument("--episodes_dir", type=Path, default=Path("saved_episodes"))
+    parser = argparse.ArgumentParser(description="Finetune SmolVLA on lidia552/Embodia_project")
+    parser.add_argument("--repo_id", type=str, default=REPO_ID)
     parser.add_argument("--output_dir", type=Path, default=Path("outputs/smolvla_so101"))
     parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
     parser.add_argument("--total_steps", type=int, default=TOTAL_STEPS)
@@ -44,37 +50,64 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    # Load HuggingFace token from .env
+    load_dotenv()
+    hf_token = os.getenv("HF_TOKEN")
+    if hf_token:
+        login(token=hf_token)
+        print("Logged in to HuggingFace via .env token")
+    else:
+        print("No HF_TOKEN in .env — assuming already logged in via huggingface-cli")
+
     print("=" * 60)
-    print("SmolVLA Finetuning — SO-101 Episodes")
+    print("SmolVLA Finetuning — SO-101 / Embodia_project")
     print("=" * 60)
-    print(f"Episodes dir : {args.episodes_dir}")
-    print(f"Output dir   : {args.output_dir}")
-    print(f"Device       : {device}")
-    print(f"Steps        : {args.total_steps}  batch={args.batch_size}  lr={args.lr}")
+    print(f"Dataset  : {args.repo_id}")
+    print(f"Output   : {args.output_dir}")
+    print(f"Device   : {device}")
+    print(f"Steps    : {args.total_steps}  batch={args.batch_size}  lr={args.lr}")
     print()
 
-    # Discover episode folders (ep2, ep3, ...)
-    episode_dirs = sorted([d for d in args.episodes_dir.iterdir() if d.is_dir()])
-    assert episode_dirs, f"No episode folders found in {args.episodes_dir}"
+    # Download dataset from HuggingFace into a local cache directory.
+    # Each episode is its own sub-folder (ep2/, ep3/, …) so we use snapshot_download
+    # and treat the local dir as the episodes root, bypassing lerobot's version-tag check.
+    episodes_dir = Path.home() / ".cache/huggingface/lerobot_embodia"
+    if not any(episodes_dir.iterdir()) if episodes_dir.exists() else True:
+        print(f"Downloading dataset to {episodes_dir} ...")
+        snapshot_download(
+            repo_id=args.repo_id,
+            repo_type="dataset",
+            local_dir=str(episodes_dir),
+            token=hf_token,
+        )
+        print("Download complete.\n")
+    else:
+        print(f"Using cached dataset at {episodes_dir}\n")
+
+    # Discover episode sub-folders (ep2, ep3, …)
+    episode_dirs = sorted([d for d in episodes_dir.iterdir() if d.is_dir() and (d / "meta" / "info.json").exists()])
+    assert episode_dirs, f"No episode folders found in {episodes_dir}"
     print(f"Found {len(episode_dirs)} episodes: {[d.name for d in episode_dirs]}")
 
-    # Load metadata from first episode to derive features and fps
-    first_meta = LeRobotDatasetMetadata(
-        repo_id=episode_dirs[0].name, root=args.episodes_dir
-    )
+    # Load metadata from first episode to derive features and fps.
+    # root must point directly at the episode folder (where meta/info.json lives).
+    first_ep_dir = episode_dirs[0]
+    first_meta = LeRobotDatasetMetadata(repo_id=first_ep_dir.name, root=first_ep_dir)
     features = dataset_to_policy_features(first_meta.features)
     output_features = {k: v for k, v in features.items() if v.type is FeatureType.ACTION}
     input_features = {k: v for k, v in features.items() if k not in output_features}
     fps = first_meta.fps
 
-    print(f"State/action dim : {list(input_features)}")
-    print(f"Action features  : {list(output_features)}")
-    print(f"FPS              : {fps}")
-    print()
+    print(f"Input features  : {list(input_features)}")
+    print(f"Output features : {list(output_features)}")
+    print(f"FPS             : {fps}\n")
 
-    # Delta timestamps: single current frame for observations, chunk of future actions
+    # Delta timestamps: current frame for observations, next chunk_size frames for actions
     image_keys = [k for k in input_features if "images" in k]
-    delta_timestamps = {"observation.state": [0.0], "action": [i / fps for i in range(args.chunk_size)]}
+    delta_timestamps = {
+        "observation.state": [0.0],
+        "action": [i / fps for i in range(args.chunk_size)],
+    }
     for key in image_keys:
         delta_timestamps[key] = [0.0]
 
@@ -93,12 +126,13 @@ def main():
         device=str(device),
     )
 
-    # Load all episodes and combine into one dataset
+    # Load all episodes and combine. root=ep_dir so that lerobot finds meta/info.json
+    # at ep_dir/meta/info.json without falling back to a HuggingFace lookup.
     datasets = []
     for ep_dir in episode_dirs:
         ds = LeRobotDataset(
             repo_id=ep_dir.name,
-            root=args.episodes_dir,
+            root=ep_dir,
             delta_timestamps=delta_timestamps,
         )
         datasets.append(ds)
@@ -108,14 +142,13 @@ def main():
     loader = DataLoader(combined, batch_size=args.batch_size, shuffle=True, num_workers=0)
     print(f"\nTotal training frames: {len(combined)}")
 
-    # Load SmolVLA base model from HuggingFace
+    # Load SmolVLA base model
     print("\nLoading SmolVLA base model (lerobot/smolvla_base)...")
     policy = SmolVLAPolicy.from_pretrained("lerobot/smolvla_base", config=cfg)
     policy.train()
     policy.to(device)
 
-    # Preprocessor handles normalization using stats from the first episode.
-    # For a multi-episode setup with different stats, consider aggregating stats first.
+    # Preprocessor uses stats from first episode for normalization
     preprocessor, _ = make_smolvla_pre_post_processors(cfg, dataset_stats=first_meta.stats)
 
     optimizer = cfg.get_optimizer_preset().build(policy.parameters())
@@ -142,7 +175,7 @@ def main():
             if global_step % LOG_FREQ == 0:
                 print(f"step {global_step:>5}/{args.total_steps}  loss={loss.item():.4f}")
 
-    # Save finetuned model in HuggingFace pretrained format
+    # Save finetuned model
     policy.save_pretrained(str(args.output_dir))
     print(f"\nSaved finetuned model to {args.output_dir}")
     print("Load it later with: SmolVLAPolicy.from_pretrained('<output_dir>')")
