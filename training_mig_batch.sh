@@ -24,6 +24,7 @@ pip install transformers
 pip install lerobot==0.4.4
 pip install -e .
 pip install dotenv
+pip install huggingface_hub==0.35.3
 
 python vbti/utils/teleoperation/train_smolvla.py
 deactivate
