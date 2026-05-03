@@ -23,6 +23,7 @@ pip install tqdm
 pip install transformers
 pip install lerobot==0.3.3
 pip install -e .
+pip install dotenv
 
 python vbti/utils/teleoperation/train_smolvla.py
 deactivate
