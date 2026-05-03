@@ -18,13 +18,11 @@ source venv/bin/activate
 
 pip install --upgrade pip
 
+pip uninstall transformers
+pip install -r reqs_training.txt
+
+# Replace the following with reqs if possible
 pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
-pip install tqdm
-pip install transformers
-pip install lerobot==0.4.4
-pip install -e .
-pip install dotenv
-pip install huggingface_hub==0.23.0
 
 python vbti/utils/teleoperation/train_smolvla.py
 deactivate

@@ -1,0 +1,7 @@
+torch==2.5.1+cu121
+tqdm
+transformers
+lerobot==0.4.4
+dotenv
+huggingface_hub==0.35.3
+-e .
