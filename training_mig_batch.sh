@@ -24,5 +24,5 @@ pip install transformers
 pip install lerobot==0.3.3
 pip install -e .
 
-python vbti/utils/train/train_smolvla_custom.py
+python vbti/utils/teleoperation/train_smolvla.py
 deactivate
