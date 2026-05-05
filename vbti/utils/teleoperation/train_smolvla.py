@@ -134,6 +134,7 @@ def main():
             repo_id=ep_dir.name,
             root=ep_dir,
             delta_timestamps=delta_timestamps,
+            video_backend="pyav",
         )
         datasets.append(ds)
         print(f"  {ep_dir.name}: {len(ds)} frames")

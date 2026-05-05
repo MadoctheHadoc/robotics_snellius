@@ -1,5 +1,6 @@
 tqdm
 num2words
+av
 transformers>=4.45.0,<5.0
 lerobot==0.4.4
 python-dotenv
