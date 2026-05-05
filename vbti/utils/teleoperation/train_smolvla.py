@@ -145,23 +145,37 @@ def main():
         device=str(device),
     )
 
-    # lerobot's _query_hf_dataset returns ALL parquet columns, including per-episode
-    # camera columns (e.g. 'observation.images.down' in ep2 vs 'observation.images.downh'
-    # in ep10). A batch mixing samples from different episodes will fail collation.
-    # KeyFilterDataset strips each sample down to only the agreed-upon keys.
+    # lerobot 0.4.4 returns task_index (int tensor) from parquet but NOT the resolved
+    # task text. The SmolVLA preprocessor needs the 'task' string. We load the text
+    # from each episode's meta/tasks.parquet and inject it in the wrapper.
+    # The wrapper also strips per-episode camera columns so mixed batches collate cleanly.
     agreed_keys = (
         {"observation.state", "action", "timestamp", "frame_index",
-         "episode_index", "index", "task_index"}
+         "episode_index", "index", "task_index", "task"}
         | common_image_keys
     )
 
+    def load_task_lookup(ep_dir: Path) -> dict:
+        import pandas as pd
+        tasks_path = ep_dir / "meta" / "tasks.parquet"
+        if tasks_path.exists():
+            df = pd.read_parquet(tasks_path)
+            return dict(zip(df["task_index"].tolist(), df["task"].tolist()))
+        return {0: ""}
+
     class KeyFilterDataset(torch.utils.data.Dataset):
-        def __init__(self, dataset):
+        def __init__(self, dataset, task_lookup):
             self.dataset = dataset
+            self.task_lookup = task_lookup
         def __len__(self):
             return len(self.dataset)
         def __getitem__(self, idx):
-            return {k: v for k, v in self.dataset[idx].items() if k in agreed_keys}
+            sample = self.dataset[idx]
+            result = {k: v for k, v in sample.items() if k in agreed_keys}
+            if "task" not in result:
+                task_idx = int(sample["task_index"].item() if hasattr(sample["task_index"], "item") else sample["task_index"])
+                result["task"] = self.task_lookup.get(task_idx, "")
+            return result
 
     datasets = []
     for ep_dir in episode_dirs:
@@ -171,8 +185,9 @@ def main():
             delta_timestamps=delta_timestamps,
             video_backend="pyav",
         )
-        datasets.append(KeyFilterDataset(ds))
-        print(f"  {ep_dir.name}: {len(ds)} frames")
+        task_lookup = load_task_lookup(ep_dir)
+        datasets.append(KeyFilterDataset(ds, task_lookup))
+        print(f"  {ep_dir.name}: {len(ds)} frames  tasks={list(task_lookup.values())}")
 
     combined = ConcatDataset(datasets)
     loader = DataLoader(combined, batch_size=args.batch_size, shuffle=True, num_workers=0)
