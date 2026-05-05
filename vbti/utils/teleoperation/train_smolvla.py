@@ -89,26 +89,45 @@ def main():
     assert episode_dirs, f"No episode folders found in {episodes_dir}"
     print(f"Found {len(episode_dirs)} episodes: {[d.name for d in episode_dirs]}")
 
-    # Load metadata from first episode to derive features and fps.
-    # root must point directly at the episode folder (where meta/info.json lives).
-    first_ep_dir = episode_dirs[0]
-    first_meta = LeRobotDatasetMetadata(repo_id=first_ep_dir.name, root=first_ep_dir)
+    # Load metadata from every episode and take the intersection of image features.
+    # Episodes can have different camera names (e.g. 'downh' vs 'down'), so using
+    # only the first episode's keys would break loading for the others.
+    all_metas = [
+        LeRobotDatasetMetadata(repo_id=ep_dir.name, root=ep_dir)
+        for ep_dir in episode_dirs
+    ]
+    first_meta = all_metas[0]
+    fps = first_meta.fps
+
+    # Start from the first episode's full feature set, then keep only keys present in all
     features = dataset_to_policy_features(first_meta.features)
     output_features = {k: v for k, v in features.items() if v.type is FeatureType.ACTION}
     input_features = {k: v for k, v in features.items() if k not in output_features}
-    fps = first_meta.fps
+
+    all_image_keys = [set(
+        k for k in dataset_to_policy_features(m.features) if "images" in k
+    ) for m in all_metas]
+    common_image_keys = set.intersection(*all_image_keys)
+    # Drop image keys not shared by every episode
+    input_features = {
+        k: v for k, v in input_features.items()
+        if "images" not in k or k in common_image_keys
+    }
 
     print(f"Input features  : {list(input_features)}")
     print(f"Output features : {list(output_features)}")
-    print(f"FPS             : {fps}\n")
+    print(f"FPS             : {fps}")
+    if common_image_keys != all_image_keys[0]:
+        dropped = all_image_keys[0] - common_image_keys
+        print(f"Dropped non-common camera keys: {dropped}")
+    print()
 
     # Delta timestamps: current frame for observations, next chunk_size frames for actions
-    image_keys = [k for k in input_features if "images" in k]
     delta_timestamps = {
         "observation.state": [0.0],
         "action": [i / fps for i in range(args.chunk_size)],
     }
-    for key in image_keys:
+    for key in common_image_keys:
         delta_timestamps[key] = [0.0]
 
     # SmolVLA config
