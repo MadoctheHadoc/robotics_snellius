@@ -145,8 +145,24 @@ def main():
         device=str(device),
     )
 
-    # Load all episodes and combine. root=ep_dir so that lerobot finds meta/info.json
-    # at ep_dir/meta/info.json without falling back to a HuggingFace lookup.
+    # lerobot's _query_hf_dataset returns ALL parquet columns, including per-episode
+    # camera columns (e.g. 'observation.images.down' in ep2 vs 'observation.images.downh'
+    # in ep10). A batch mixing samples from different episodes will fail collation.
+    # KeyFilterDataset strips each sample down to only the agreed-upon keys.
+    agreed_keys = (
+        {"observation.state", "action", "timestamp", "frame_index",
+         "episode_index", "index", "task_index"}
+        | common_image_keys
+    )
+
+    class KeyFilterDataset(torch.utils.data.Dataset):
+        def __init__(self, dataset):
+            self.dataset = dataset
+        def __len__(self):
+            return len(self.dataset)
+        def __getitem__(self, idx):
+            return {k: v for k, v in self.dataset[idx].items() if k in agreed_keys}
+
     datasets = []
     for ep_dir in episode_dirs:
         ds = LeRobotDataset(
@@ -155,7 +171,7 @@ def main():
             delta_timestamps=delta_timestamps,
             video_backend="pyav",
         )
-        datasets.append(ds)
+        datasets.append(KeyFilterDataset(ds))
         print(f"  {ep_dir.name}: {len(ds)} frames")
 
     combined = ConcatDataset(datasets)
