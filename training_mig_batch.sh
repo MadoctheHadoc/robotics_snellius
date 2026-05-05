@@ -18,11 +18,9 @@ source venv/bin/activate
 
 pip install --upgrade pip
 
-pip uninstall transformers
-pip install -r reqs_training.txt
+pip install torch==2.5.1+cu121 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 
-# Replace the following with reqs if possible
-pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install -r reqs_training.txt
 
 python vbti/utils/teleoperation/train_smolvla.py
 deactivate
