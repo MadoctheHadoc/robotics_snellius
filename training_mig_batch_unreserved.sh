@@ -5,8 +5,8 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=10:00:00
-#SBATCH --partition=gpu_mig
+#SBATCH --time=1:00:00
+#SBATCH --partition=tue.gpu.q
 
 cd $SLURM_SUBMIT_DIR
 
