@@ -158,10 +158,16 @@ def main():
     def load_task_lookup(ep_dir: Path) -> dict:
         import pandas as pd
         tasks_path = ep_dir / "meta" / "tasks.parquet"
-        if tasks_path.exists():
-            df = pd.read_parquet(tasks_path)
-            return dict(zip(df["task_index"].tolist(), df["task"].tolist()))
-        return {0: ""}
+        if not tasks_path.exists():
+            return {0: ""}
+        df = pd.read_parquet(tasks_path)
+        # Find the index column and the text column dynamically
+        index_col = next((c for c in df.columns if "index" in c.lower()), None)
+        text_col = next((c for c in df.columns if c != index_col), None)
+        if index_col is None or text_col is None:
+            print(f"  Warning: unexpected tasks.parquet columns {df.columns.tolist()} in {ep_dir.name}, using fallback")
+            return {0: ""}
+        return dict(zip(df[index_col].tolist(), df[text_col].tolist()))
 
     class KeyFilterDataset(torch.utils.data.Dataset):
         def __init__(self, dataset, task_lookup):
