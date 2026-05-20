@@ -5,4 +5,6 @@ transformers>=4.45.0,<5.0
 lerobot==0.4.4
 python-dotenv
 huggingface_hub==0.35.3
+pyzmq
+opencv-python-headless
 -e .
