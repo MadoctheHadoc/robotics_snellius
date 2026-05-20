@@ -16,6 +16,8 @@ module load CUDA/12.1.1
 
 source venv/bin/activate
 
+pip install pyzmq opencv-python-headless --quiet
+
 echo "============================================"
 echo "Node hostname : $(hostname)"
 echo "SSH tunnel    : ssh -L 5556:$(hostname):5556 lpopdimitrova@snellius.surf.nl"
