@@ -16,12 +16,8 @@ module load CUDA/12.1.1
 
 source venv/bin/activate
 
-pip install pyzmq opencv-python-headless
-pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
-pip install tqdm
-pip install lerobot
-pip install "huggingface_hub==1.6.0"
-pip install -e .
+# Uses different HF version from the training for some reason
+pip install -r reqs_inference.txt
 
 echo "============================================"
 echo "Node hostname : $(hostname)"
