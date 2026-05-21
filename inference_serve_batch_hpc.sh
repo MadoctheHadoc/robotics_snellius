@@ -11,11 +11,17 @@
 module load Python/3.11.3-GCCcore-12.3.0
 module load CUDA/12.1.1
 
-python -m venv venv
+# This might have to be done the first time we run it
+# python -m venv venv
 
 source venv/bin/activate
 
-pip install pyzmq opencv-python-headless --quiet
+pip install pyzmq opencv-python-headless
+pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install tqdm
+pip install lerobot
+pip install "huggingface_hub==1.6.0"
+pip install -e .
 
 echo "============================================"
 echo "Node hostname : $(hostname)"
