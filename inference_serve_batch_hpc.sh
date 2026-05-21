@@ -8,8 +8,6 @@
 #SBATCH --time=01:00:00
 #SBATCH --partition=tue.gpu.q
 
-module load 2023
-module load foss/2023a
 module load Python/3.11.3-GCCcore-12.3.0
 module load CUDA/12.1.1
 
