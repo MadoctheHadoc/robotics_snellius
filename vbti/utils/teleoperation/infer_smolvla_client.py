@@ -26,6 +26,7 @@ Dependencies (laptop):  pip install pyzmq opencv-python
 
 import argparse
 import signal
+import sys
 import time
 
 import cv2
@@ -92,15 +93,27 @@ def main():
 
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REQ)
-    sock.setsockopt(zmq.RCVTIMEO, args.timeout_ms)
     sock.connect(f"tcp://{args.host}:{args.port}")
     print(f"Connected to tcp://{args.host}:{args.port}")
 
-    # Reset the server's policy state before we start
-    print("Sending RESET to server ...")
+    # RESET handshake — use a long timeout because the server may still be loading the model.
+    # The ZMQ socket only binds after from_pretrained() finishes, which can take 1-2 min.
+    RESET_TIMEOUT_MS = 180_000  # 3 minutes
+    sock.setsockopt(zmq.RCVTIMEO, RESET_TIMEOUT_MS)
+    print("Sending RESET to server (waiting up to 3 min for model to load) ...")
     sock.send_multipart([b"RESET"])
-    sock.recv_multipart()
+    try:
+        sock.recv_multipart()
+    except zmq.error.Again:
+        print("\nERROR: No response from server. Check:")
+        print(f"  1. SSH tunnel is open:      ssh -L {args.port}:<nodename>:{args.port} <user>@<login-node>")
+        print(f"  2. Server job is running:   squeue -u $USER")
+        print(f"  3. Server log shows:        'Server ready on tcp://*:{args.port}'")
+        sys.exit(1)
     print("Server ready.\n")
+
+    # Switch to the configured per-request timeout for inference
+    sock.setsockopt(zmq.RCVTIMEO, args.timeout_ms)
 
     # Open camera
     cap = open_camera(args.camera)

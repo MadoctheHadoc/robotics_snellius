@@ -24,7 +24,7 @@ echo "Node hostname : $(hostname)"
 echo "SSH tunnel    : ssh -L 5556:$(hostname):5556 20221051@hpc.tue.nl"
 echo "============================================"
 
-python vbti/utils/teleoperation/infer_smolvla.py \
+python -u vbti/utils/teleoperation/infer_smolvla.py \
     --serve \
     --zmq_port 5556 \
     --model_dir outputs/smolvla_so101
