@@ -21,7 +21,7 @@ pip install -r reqs_inference.txt
 
 echo "============================================"
 echo "Node hostname : $(hostname)"
-echo "SSH tunnel    : ssh -L 5556:$(hostname):5556 somethingelse@IDKyet"
+echo "SSH tunnel    : ssh -L 5556:$(hostname):5556 20221051@hpc.tue.nl"
 echo "============================================"
 
 python vbti/utils/teleoperation/infer_smolvla.py \
