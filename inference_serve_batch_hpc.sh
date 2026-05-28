@@ -20,9 +20,18 @@ source venv/bin/activate
 pip install -r reqs_inference.txt
 
 echo "============================================"
-echo "Node hostname : $(hostname)"
-echo "SSH tunnel    : ssh -L 5556:$(hostname):5556 20221051@hpc.tue.nl"
+echo "Node: $(hostname)  SLURM: $SLURM_NODELIST"
 echo "============================================"
+
+# Open a reverse tunnel: login-node:5556 -> this compute node:5556.
+# This avoids firewall rules that block direct TCP to compute nodes.
+# Requires passwordless SSH from compute node to login node; if this
+# hangs, set up an SSH key: ssh-keygen && ssh-copy-id 20221051@hpc.tue.nl
+ssh -N -f -o StrictHostKeyChecking=no \
+    -R 5556:localhost:5556 \
+    20221051@hpc.tue.nl
+echo "Reverse tunnel established: hpc.tue.nl:5556 -> $(hostname):5556"
+echo "Laptop tunnel: ssh -N -L 5556:localhost:5556 20221051@hpc.tue.nl"
 
 python -u vbti/utils/teleoperation/infer_smolvla.py \
     --serve \

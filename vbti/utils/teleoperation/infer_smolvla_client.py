@@ -33,16 +33,20 @@ import cv2
 import numpy as np
 import zmq
 
+from collections import namedtuple
+
 from lerobot.motors.feetech import FeetechMotorsBus
 
 
+_Motor = namedtuple("_Motor", ["id", "model"])
+
 SO101_MOTORS = {
-    "shoulder_pan":  (1, "sts3215"),
-    "shoulder_lift": (2, "sts3215"),
-    "elbow_flex":    (3, "sts3215"),
-    "wrist_flex":    (4, "sts3215"),
-    "wrist_roll":    (5, "sts3215"),
-    "gripper":       (6, "sts3215"),
+    "shoulder_pan":  _Motor(1, "sts3215"),
+    "shoulder_lift": _Motor(2, "sts3215"),
+    "elbow_flex":    _Motor(3, "sts3215"),
+    "wrist_flex":    _Motor(4, "sts3215"),
+    "wrist_roll":    _Motor(5, "sts3215"),
+    "gripper":       _Motor(6, "sts3215"),
 }
 JOINT_NAMES = list(SO101_MOTORS.keys())
 
@@ -98,9 +102,9 @@ def main():
 
     # RESET handshake — use a long timeout because the server may still be loading the model.
     # The ZMQ socket only binds after from_pretrained() finishes, which can take 1-2 min.
-    RESET_TIMEOUT_MS = 180_000  # 3 minutes
+    RESET_TIMEOUT_MS = 20_000  # 1 minutes
     sock.setsockopt(zmq.RCVTIMEO, RESET_TIMEOUT_MS)
-    print("Sending RESET to server (waiting up to 3 min for model to load) ...")
+    print("Sending RESET to server (waiting up to 1 min for model to load) ...")
     sock.send_multipart([b"RESET"])
     try:
         sock.recv_multipart()
@@ -123,7 +127,7 @@ def main():
     if not args.no_arm:
         bus = FeetechMotorsBus(
             port=args.so101_port,
-            motors={name: list(cfg) for name, cfg in SO101_MOTORS.items()},
+            motors=SO101_MOTORS,
         )
         bus.connect()
         print(f"SO-101 connected on {args.so101_port}")
