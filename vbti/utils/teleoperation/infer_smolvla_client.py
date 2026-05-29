@@ -33,20 +33,17 @@ import cv2
 import numpy as np
 import zmq
 
-from collections import namedtuple
-
 from lerobot.motors.feetech import FeetechMotorsBus
+from lerobot.motors.motors_bus import Motor, MotorCalibration, MotorNormMode
 
-
-_Motor = namedtuple("_Motor", ["id", "model"])
 
 SO101_MOTORS = {
-    "shoulder_pan":  _Motor(1, "sts3215"),
-    "shoulder_lift": _Motor(2, "sts3215"),
-    "elbow_flex":    _Motor(3, "sts3215"),
-    "wrist_flex":    _Motor(4, "sts3215"),
-    "wrist_roll":    _Motor(5, "sts3215"),
-    "gripper":       _Motor(6, "sts3215"),
+    "shoulder_pan":  Motor(1, "sts3215", MotorNormMode.RANGE_M100_100),
+    "shoulder_lift": Motor(2, "sts3215", MotorNormMode.RANGE_M100_100),
+    "elbow_flex":    Motor(3, "sts3215", MotorNormMode.RANGE_M100_100),
+    "wrist_flex":    Motor(4, "sts3215", MotorNormMode.RANGE_M100_100),
+    "wrist_roll":    Motor(5, "sts3215", MotorNormMode.RANGE_M100_100),
+    "gripper":       Motor(6, "sts3215", MotorNormMode.RANGE_M100_100),
 }
 JOINT_NAMES = list(SO101_MOTORS.keys())
 
@@ -72,8 +69,8 @@ def parse_args():
                    help="Skip SO-101 connection; send zero state and do not write actions")
     p.add_argument("--execute",   action="store_true",
                    help="Write predicted actions to the SO-101 arm (requires --no_arm to be off)")
-    p.add_argument("--timeout_ms", type=int,  default=15000,
-                   help="ZMQ receive timeout in ms (default: 15000 — first call loads the VLM)")
+    p.add_argument("--timeout_ms", type=int,  default=60000,
+                   help="ZMQ receive timeout per inference request in ms (default: 60000)")
     return p.parse_args()
 
 
@@ -130,6 +127,16 @@ def main():
             motors=SO101_MOTORS,
         )
         bus.connect()
+        bus.calibration = {
+            name: MotorCalibration(
+                id=m.id,
+                drive_mode=0,
+                homing_offset=0,
+                range_min=0,
+                range_max=4095,
+            )
+            for name, m in SO101_MOTORS.items()
+        }
         print(f"SO-101 connected on {args.so101_port}")
 
     running = True
@@ -156,9 +163,8 @@ def main():
 
             # Read joint state
             if bus is not None:
-                positions = bus.read("Present_Position")
                 state = np.array(
-                    [float(positions[i]) for i in range(len(JOINT_NAMES))],
+                    [float(bus.read("Present_Position", n)) for n in JOINT_NAMES],
                     dtype=np.float32,
                 )
             else:
@@ -174,9 +180,23 @@ def main():
                 jpeg_bytes,
             ])
 
-            # Receive predicted action
-            parts = sock.recv_multipart()
-            action = np.frombuffer(parts[0], dtype=np.float32).copy()
+            # Receive predicted action — on timeout, recreate the socket
+            # (ZMQ REQ is broken after a send with no matching recv)
+            try:
+                parts = sock.recv_multipart()
+            except zmq.error.Again:
+                print("  [inference timeout — reconnecting socket]")
+                sock.close()
+                sock = ctx.socket(zmq.REQ)
+                sock.setsockopt(zmq.RCVTIMEO, args.timeout_ms)
+                sock.connect(f"tcp://{args.host}:{args.port}")
+                continue
+
+            status = parts[0]
+            if status == b"ERR":
+                print(f"\n[SERVER ERROR]\n{parts[1].decode()}")
+                continue
+            action = np.frombuffer(parts[1], dtype=np.float32).copy()
 
             step += 1
             pos_str = "  ".join(f"{n[:3]}:{v:7.1f}" for n, v in zip(JOINT_NAMES, action))
@@ -185,7 +205,8 @@ def main():
             # Write to arm
             if args.execute and bus is not None:
                 goal = np.clip(action, POS_MIN, POS_MAX).astype(np.int32)
-                bus.write("Goal_Position", goal)
+                for i, n in enumerate(JOINT_NAMES):
+                    bus.write("Goal_Position", n, int(goal[i]))
 
             elapsed = time.perf_counter() - t0
             sleep_time = period - elapsed
