@@ -31,6 +31,7 @@ import torch
 
 from lerobot.motors.feetech import FeetechMotorsBus
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
 
 SO101_MOTORS = {
@@ -93,6 +94,11 @@ def capture_frame(camera_index: int) -> np.ndarray:
 def serve_loop(policy, device, zmq_port: int):
     import zmq
 
+    # Preprocessor tokenizes the task string → observation.language.tokens.
+    # dataset_stats=None skips external normalization; the model's saved
+    # normalizer buffers handle MEAN_STD internally.
+    preprocessor, _ = make_smolvla_pre_post_processors(policy.config, dataset_stats=None)
+
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REP)
     sock.bind(f"tcp://*:{zmq_port}")
@@ -115,27 +121,35 @@ def serve_loop(policy, device, zmq_port: int):
             step = 0
             continue
 
-        task = parts[0].decode("utf-8")
-        state = np.frombuffer(parts[1], dtype=np.float32).copy()
+        try:
+            task = parts[0].decode("utf-8")
+            state = np.frombuffer(parts[1], dtype=np.float32).copy()
 
-        image_arr = np.frombuffer(parts[2], np.uint8)
-        image_bgr = cv2.imdecode(image_arr, cv2.IMREAD_COLOR)
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+            image_arr = np.frombuffer(parts[2], np.uint8)
+            image_bgr = cv2.imdecode(image_arr, cv2.IMREAD_COLOR)
+            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        batch = _build_batch(task, state, image_rgb, device)
+            batch = _build_batch(task, state, image_rgb, device)
+            batch = preprocessor(batch)
 
-        with torch.no_grad():
-            action = policy.select_action(batch)
+            with torch.no_grad():
+                action = policy.select_action(batch)
 
-        if action.dim() == 2:
-            action = action[0]
-        action_np = action.cpu().numpy().astype(np.float32)
+            if action.dim() == 2:
+                action = action[0]
+            action_np = action.cpu().numpy().astype(np.float32)
 
-        sock.send_multipart([action_np.tobytes()])
+            sock.send_multipart([b"OK", action_np.tobytes()])
 
-        step += 1
-        pos_str = "  ".join(f"{n[:3]}:{v:.0f}" for n, v in zip(JOINT_NAMES, action_np))
-        print(f"[{step:5d}] task=\"{task[:30]}\"  {pos_str}")
+            step += 1
+            pos_str = "  ".join(f"{n[:3]}:{v:.0f}" for n, v in zip(JOINT_NAMES, action_np))
+            print(f"[{step:5d}] task=\"{task[:30]}\"  {pos_str}")
+
+        except Exception as e:
+            import traceback
+            msg = traceback.format_exc()
+            print(f"\n[ERROR on step {step+1}]\n{msg}")
+            sock.send_multipart([b"ERR", msg.encode("utf-8")])
 
 
 def main():
