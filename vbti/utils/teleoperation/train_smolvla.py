@@ -26,7 +26,7 @@ from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
-REPO_ID = "lidia552/Embodia_project"
+REPO_ID = "MadoctheHadoc/knightmare_teleoperation"
 CHUNK_SIZE = 50
 LEARNING_RATE = 1e-5
 BATCH_SIZE = 4
