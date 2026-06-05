@@ -30,7 +30,7 @@ REPO_ID = "MadoctheHadoc/knightmare_teleoperation"
 CHUNK_SIZE = 50
 LEARNING_RATE = 1e-5
 BATCH_SIZE = 4
-TOTAL_STEPS = 500
+TOTAL_STEPS = 10000
 LOG_FREQ = 10
 
 
