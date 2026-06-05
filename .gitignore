@@ -102,3 +102,4 @@ robots/roarm-m3-assets/
 # Old demonstration data
 old/diffusion/data/robot_demonstrations/
 datasets/
+episodes/
