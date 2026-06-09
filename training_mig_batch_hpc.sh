@@ -5,7 +5,7 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --time=02:00:00
+#SBATCH --time=10:00:00
 #SBATCH --partition=tue.gpu.q
 
 module load Python/3.11.3-GCCcore-12.3.0
