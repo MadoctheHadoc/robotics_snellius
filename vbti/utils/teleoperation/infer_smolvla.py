@@ -22,6 +22,7 @@ Protocol (ZMQ REQ/REP, multipart):
 """
 
 import argparse
+import json
 import socket as _socket
 from pathlib import Path
 
@@ -91,13 +92,19 @@ def capture_frame(camera_index: int) -> np.ndarray:
         cap.release()
 
 
-def serve_loop(policy, device, zmq_port: int):
+def serve_loop(policy, device, zmq_port: int, dataset_stats: dict | None = None):
     import zmq
 
-    # Preprocessor tokenizes the task string → observation.language.tokens.
-    # dataset_stats=None skips external normalization; the model's saved
-    # normalizer buffers handle MEAN_STD internally.
-    preprocessor, _ = make_smolvla_pre_post_processors(policy.config, dataset_stats=None)
+    preprocessor, _ = make_smolvla_pre_post_processors(policy.config, dataset_stats=dataset_stats)
+
+    # Pre-compute unnormalization arrays from ACTION stats (MEAN_STD).
+    # Model output is in normalized space; multiply by std and add mean to get degrees.
+    if dataset_stats and "action" in dataset_stats:
+        action_mean = np.array(dataset_stats["action"]["mean"], dtype=np.float32)
+        action_std  = np.array(dataset_stats["action"]["std"],  dtype=np.float32)
+    else:
+        action_mean = None
+        action_std  = None
 
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REP)
@@ -139,6 +146,10 @@ def serve_loop(policy, device, zmq_port: int):
                 action = action[0]
             action_np = action.cpu().numpy().astype(np.float32)
 
+            # Unnormalize from MEAN_STD space back to degrees
+            if action_mean is not None:
+                action_np = action_np * action_std + action_mean
+
             sock.send_multipart([b"OK", action_np.tobytes()])
 
             step += 1
@@ -162,8 +173,17 @@ def main():
     policy.to(device)
     print(f"Model on {device}\n")
 
+    stats_path = args.model_dir / "dataset_stats.json"
+    dataset_stats = None
+    if stats_path.exists():
+        with open(stats_path) as f:
+            dataset_stats = json.load(f)
+        print(f"Loaded normalization stats from {stats_path}")
+    else:
+        print(f"WARNING: {stats_path} not found — outputs will NOT be unnormalized")
+
     if args.serve:
-        serve_loop(policy, device, args.zmq_port)
+        serve_loop(policy, device, args.zmq_port, dataset_stats=dataset_stats)
         return
 
     # --- One-shot mode ---

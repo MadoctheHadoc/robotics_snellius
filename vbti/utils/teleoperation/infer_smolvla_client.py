@@ -47,8 +47,9 @@ SO101_MOTORS = {
 }
 JOINT_NAMES = list(SO101_MOTORS.keys())
 
-# Feetech STS3215 valid position range
-POS_MIN, POS_MAX = 0, 4095
+# Conversion between raw STS3215 ticks [0, 4095] and degrees [0°, 360°]
+# (matches the dataset collection in so101_teleop.py)
+STEPS_PER_DEG = 4096.0 / 360.0
 
 
 def parse_args():
@@ -161,10 +162,10 @@ def main():
         while running:
             t0 = time.perf_counter()
 
-            # Read joint state
+            # Read joint state in degrees (matches dataset collection in so101_teleop.py)
             if bus is not None:
                 state = np.array(
-                    [float(bus.read("Present_Position", n)) for n in JOINT_NAMES],
+                    [bus.read("Present_Position", n, normalize=False) / STEPS_PER_DEG for n in JOINT_NAMES],
                     dtype=np.float32,
                 )
             else:
@@ -202,11 +203,11 @@ def main():
             pos_str = "  ".join(f"{n[:3]}:{v:7.1f}" for n, v in zip(JOINT_NAMES, action))
             print(f"[{step:5d}] {pos_str}")
 
-            # Write to arm
+            # Write to arm — convert degrees back to raw ticks
             if args.execute and bus is not None:
-                goal = np.clip(action, POS_MIN, POS_MAX).astype(np.int32)
                 for i, n in enumerate(JOINT_NAMES):
-                    bus.write("Goal_Position", n, int(goal[i]))
+                    raw = int(np.clip(action[i] * STEPS_PER_DEG, 0, 4095))
+                    bus.write("Goal_Position", n, raw, normalize=False)
 
             elapsed = time.perf_counter() - t0
             sleep_time = period - elapsed

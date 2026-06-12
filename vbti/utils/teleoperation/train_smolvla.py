@@ -237,6 +237,23 @@ def main():
     print(f"\nSaved finetuned model to {args.output_dir}")
     print("Load it later with: SmolVLAPolicy.from_pretrained('<output_dir>')")
 
+    # Save normalization stats so the inference server can unnormalize outputs
+    import json
+
+    def _to_serializable(v):
+        if hasattr(v, "tolist"):
+            return v.tolist()
+        try:
+            return [_to_serializable(x) for x in v]
+        except TypeError:
+            return v
+
+    stats_out = {k: {sk: _to_serializable(sv) for sk, sv in vs.items()} for k, vs in first_meta.stats.items()}
+    stats_path = args.output_dir / "dataset_stats.json"
+    with open(stats_path, "w") as f:
+        json.dump(stats_out, f, indent=2)
+    print(f"Saved normalization stats to {stats_path}")
+
 
 if __name__ == "__main__":
     main()
