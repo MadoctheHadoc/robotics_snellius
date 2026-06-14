@@ -203,7 +203,13 @@ def main():
             pos_str = "  ".join(f"{n[:3]}:{v:7.1f}" for n, v in zip(JOINT_NAMES, action))
             print(f"[{step:5d}] {pos_str}")
 
-            # Write to arm — convert degrees back to raw ticks
+            # Write to arm - convert degrees back to raw ticks
+            raw = []
+            for i, n in enumerate(JOINT_NAMES):
+                raw.append(str(np.clip(action[i] * STEPS_PER_DEG, 0, 4095)))
+                
+            print("Outputs: " + ", ".join(raw))
+            
             if args.execute and bus is not None:
                 for i, n in enumerate(JOINT_NAMES):
                     raw = int(np.clip(action[i] * STEPS_PER_DEG, 0, 4095))
