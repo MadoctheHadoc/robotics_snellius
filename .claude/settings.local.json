@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c \"import lerobot; import os; base = os.path.dirname\\(lerobot.__file__\\); dirs = [d for d in os.listdir\\(base\\) if os.path.isdir\\(os.path.join\\(base, d\\)\\)]; print\\(''\\\\n''.join\\(sorted\\(dirs\\)\\)\\)\")"
+      "Bash(python -c \"import lerobot; import os; base = os.path.dirname\\(lerobot.__file__\\); dirs = [d for d in os.listdir\\(base\\) if os.path.isdir\\(os.path.join\\(base, d\\)\\)]; print\\(''\\\\n''.join\\(sorted\\(dirs\\)\\)\\)\")",
+      "Bash(python -c \"from lerobot.motors.motors_bus import Motor, MotorNormMode; print\\('NormModes:', list\\(MotorNormMode\\)\\); import inspect; print\\('Motor fields:', inspect.signature\\(Motor\\)\\)\")"
     ]
   }
 }

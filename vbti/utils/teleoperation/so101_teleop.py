@@ -25,6 +25,7 @@ Usage
 
 import argparse
 import csv
+import json
 import signal
 import time
 from pathlib import Path
@@ -51,6 +52,94 @@ JOINT_NAMES = list(SO101_MOTORS.keys())
 
 # Conversion: 4096 steps / 360 degrees → 1 degree = 11ish steps
 STEPS_PER_DEG = 4096 / 360
+
+
+def _load_grid_def(path: Path) -> dict:
+    with open(path) as f:
+        return json.load(f)
+
+
+def _draw_grid_overlay(bgr: np.ndarray, grid: dict | None, coord: list | None) -> np.ndarray:
+    """Draw grid lines and bright coordinate rings onto a BGR camera frame."""
+    import cv2
+
+    out = bgr.copy()
+    h, w = out.shape[:2]
+
+    if grid is not None:
+        ox, oy = int(grid["origin_x"]), int(grid["origin_y"])
+        cw, ch = int(grid["cell_w"]),   int(grid["cell_h"])
+        cols,  rows = int(grid["cols"]), int(grid["rows"])
+        gc = (0, 220, 0)
+        for c in range(cols + 1):
+            x = ox + c * cw
+            if 0 <= x < w:
+                cv2.line(out, (x, max(0, oy)), (x, min(h - 1, oy + rows * ch)), gc, 2)
+        for r in range(rows + 1):
+            y = oy + r * ch
+            if 0 <= y < h:
+                cv2.line(out, (max(0, ox), y), (min(w - 1, ox + cols * cw), y), gc, 2)
+        # Axis annotations — yellow, distinct from green grid lines
+        ac     = (0, 255, 255)   # BGR yellow
+        MARGIN = 15              # gap between grid border and axis line
+        TICK   = 4               # half-tick length in px
+        FS     = 0.28            # font scale
+
+        # X axis: horizontal line above the grid with arrowhead →
+        ax_y  = oy - MARGIN
+        end_x = ox + cols * cw
+        if ax_y > 0:
+            cv2.line(out, (ox, ax_y), (end_x + 10, ax_y), ac, 1, cv2.LINE_AA)
+            tip = np.array([[end_x + 10, ax_y],
+                            [end_x + 3,  ax_y - 4],
+                            [end_x + 3,  ax_y + 4]], np.int32)
+            cv2.fillPoly(out, [tip], ac)
+            for c in range(cols + 1):
+                x = ox + c * cw
+                if 0 <= x < w:
+                    cv2.line(out, (x, ax_y - TICK), (x, ax_y + TICK), ac, 1)
+                    if c < cols:
+                        for col, tk in [((0, 0, 0), 2), (ac, 1)]:
+                            cv2.putText(out, str(c), (x - 4, ax_y - TICK - 2),
+                                        cv2.FONT_HERSHEY_SIMPLEX, FS, col, tk, cv2.LINE_AA)
+
+        # Y axis: vertical line left of the grid with arrowhead ↓
+        ax_x  = ox - MARGIN
+        end_y = oy + rows * ch
+        if ax_x > 0:
+            cv2.line(out, (ax_x, oy), (ax_x, end_y + 10), ac, 1, cv2.LINE_AA)
+            tip = np.array([[ax_x,     end_y + 10],
+                            [ax_x - 4, end_y + 3],
+                            [ax_x + 4, end_y + 3]], np.int32)
+            cv2.fillPoly(out, [tip], ac)
+            for r in range(rows + 1):
+                y = oy + r * ch
+                if 0 <= y < h:
+                    cv2.line(out, (ax_x - TICK, y), (ax_x + TICK, y), ac, 1)
+                    if r < rows:
+                        for col, tk in [((0, 0, 0), 2), (ac, 1)]:
+                            cv2.putText(out, str(r), (ax_x - TICK - 13, y + 4),
+                                        cv2.FONT_HERSHEY_SIMPLEX, FS, col, tk, cv2.LINE_AA)
+
+    if coord is not None:
+        if grid is not None:
+            # coord is in grid-cell units → convert to pixel positions
+            _ox = int(grid["origin_x"]); _oy = int(grid["origin_y"])
+            _cw = int(grid["cell_w"]);   _ch = int(grid["cell_h"])
+            fx = int(_ox + coord[0] * _cw)
+            fy = int(_oy + coord[1] * _ch)
+            tx = int(_ox + coord[2] * _cw)
+            ty = int(_oy + coord[3] * _ch)
+        else:
+            fx, fy, tx, ty = (int(v) for v in coord)
+        # "Move from" — yellow ring
+        cv2.circle(out, (fx, fy), 10, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.circle(out, (fx, fy),  3, (0, 255, 255), -1)
+        # "Move to"   — magenta ring
+        cv2.circle(out, (tx, ty), 10, (255, 0, 255), 2, cv2.LINE_AA)
+        cv2.circle(out, (tx, ty),  3, (255, 0, 255), -1)
+
+    return out
 
 
 def steps_to_deg(positions: dict) -> np.ndarray:
@@ -97,6 +186,23 @@ def parse_args():
     p.add_argument("--cam_height",    type=int,   default=480,
                    help="Camera capture height (default: 480)")
 
+    # Grid / coordinate overlay (down-facing camera annotation)
+    p.add_argument("--coord", type=float, nargs=4, default=None,
+                   metavar=("FROM_X", "FROM_Y", "TO_X", "TO_Y"),
+                   help="Grid-cell coordinates to mark on the grid camera video: "
+                        "from_x from_y to_x to_y (fractional cell units, e.g. "
+                        "4.5 2.4 1.0 0.0). Converted to pixels using --grid_def. "
+                        "Draws a yellow ring at the 'move from' point and a magenta "
+                        "ring at the 'move to' point. Only affects the recorded episode video.")
+    p.add_argument("--grid_def",    type=Path, default=None,
+                   help="Path to a grid definition JSON file (created with "
+                        "grid_editor.py). Draws a grid overlay on the recorded "
+                        "video of the down-facing camera.")
+    p.add_argument("--grid_camera", type=str,  default=None,
+                   help="Name of the camera (from --camera_names) to draw the "
+                        "grid / coordinate overlay on. Defaults to the first "
+                        "camera when --coord or --grid_def is used.")
+
     args = p.parse_args()
 
     # Validate camera names length
@@ -107,6 +213,13 @@ def parse_args():
     # Default names: cam0, cam1, …
     if args.camera_names is None:
         args.camera_names = [f"cam{i}" for i in range(len(args.cameras))]
+
+    # Resolve grid_camera default and validate
+    if (args.coord is not None or args.grid_def is not None):
+        if args.grid_camera is None and args.camera_names:
+            args.grid_camera = args.camera_names[0]
+        if args.grid_camera is not None and args.camera_names and args.grid_camera not in args.camera_names:
+            p.error(f"--grid_camera '{args.grid_camera}' is not in --camera_names {args.camera_names}")
 
     return args
 
@@ -179,6 +292,15 @@ def main():
                 raise RuntimeError(f"Cannot open camera index {idx} (name='{name}')")
             caps[name] = cap
             print(f"Camera   : '{name}' → index {idx}  ({args.cam_width}x{args.cam_height})")
+
+    # --- Grid overlay ---
+    grid_def = None
+    if args.grid_def is not None:
+        grid_def = _load_grid_def(args.grid_def)
+        print(f"Grid def : {args.grid_def}")
+    use_overlay = (args.coord is not None or grid_def is not None) and args.grid_camera is not None
+    if use_overlay:
+        print(f"Overlay  : grid_camera='{args.grid_camera}'  coord={args.coord}")
 
     # --- LeRobot dataset ---
     lerobot_dataset = None
@@ -256,6 +378,8 @@ def main():
                 for name, cap in caps.items():
                     ret, bgr = cap.read()
                     if ret:
+                        if use_overlay and name == args.grid_camera:
+                            bgr = _draw_grid_overlay(bgr, grid_def, args.coord)
                         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
                         if rgb.shape[:2] != (args.cam_height, args.cam_width):
                             rgb = cv2.resize(rgb, (args.cam_width, args.cam_height))
