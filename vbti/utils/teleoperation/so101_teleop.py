@@ -80,10 +80,10 @@ def _draw_grid_overlay(bgr: np.ndarray, grid: dict | None, coord: list | None) -
             if 0 <= y < h:
                 cv2.line(out, (max(0, ox), y), (min(w - 1, ox + cols * cw), y), gc, 2)
         # Axis annotations — yellow, distinct from green grid lines
-        ac     = (0, 255, 255)   # BGR yellow
+        ac = (0, 255, 255)   # BGR yellow
         MARGIN = 15              # gap between grid border and axis line
-        TICK   = 4               # half-tick length in px
-        FS     = 0.28            # font scale
+        TICK = 4               # half-tick length in px
+        FS = 0.28            # font scale
 
         # X axis: horizontal line above the grid with arrowhead →
         ax_y  = oy - MARGIN
